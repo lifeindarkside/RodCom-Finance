@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>РодКом — Финансовый контроль</title>
+    <meta name="description" content="Прозрачный учёт финансов родительского комитета">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%237c5cfc'/%3E%3Ctext x='24' y='33' text-anchor='middle' font-family='Arial,sans-serif' font-weight='700' font-size='28' fill='white'%3E%E2%82%BD%3C/text%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <!-- Auth screen -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <div class="auth-bg-orb auth-bg-orb-1"></div>
+            <div class="auth-bg-orb auth-bg-orb-2"></div>
+            <div class="auth-content">
+                <div class="auth-logo">
+                    <div class="logo-icon-wrap">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                            <rect width="48" height="48" rx="14" fill="url(#logo-grad)"/>
+                            <text x="24" y="33" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="700" font-size="28" fill="white">&#8381;</text>
+                            <defs><linearGradient id="logo-grad" x1="0" y1="0" x2="48" y2="48"><stop stop-color="#7c5cfc"/><stop offset="1" stop-color="#00d4aa"/></linearGradient></defs>
+                        </svg>
+                    </div>
+                    <h1>РодКом</h1>
+                    <p class="auth-subtitle">Финансовый контроль</p>
+                </div>
+                <div class="auth-card">
+                    <p class="auth-desc">Войдите через Telegram для доступа к финансам родительского комитета</p>
+                    <div class="auth-actions">
+                        <button id="btn-login-tg" class="btn btn-primary btn-block" style="display:none">
+                            Войти через бота
+                        </button>
+                        <div id="telegram-widget-container" style="display: flex; justify-content: center; margin-top: 15px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main app -->
+    <div id="app-screen" class="screen">
+        <!-- Mobile Top Bar -->
+        <header id="mobile-top-bar" class="mobile-only">
+            <button id="mobile-menu-toggle" class="btn-icon-round">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <div class="mobile-logo">
+                <svg width="24" height="24" viewBox="0 0 48 48" fill="none">
+                    <rect width="48" height="48" rx="14" fill="url(#mlg)"/>
+                    <text x="24" y="33" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="700" font-size="28" fill="white">&#8381;</text>
+                    <defs><linearGradient id="mlg" x1="0" y1="0" x2="48" y2="48"><stop stop-color="#7c5cfc"/><stop offset="1" stop-color="#00d4aa"/></linearGradient></defs>
+                </svg>
+                <span>РодКом</span>
+            </div>
+            <div class="mobile-user-icon" id="mobile-user-btn">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M3 17.5c0-3 3.13-5.5 7-5.5s7 2.5 7 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                <div id="user-dropdown" class="user-dropdown">
+                    <div id="dropdown-name" class="dropdown-name"></div>
+                    <div id="dropdown-role" class="dropdown-role"></div>
+                    <button id="btn-logout-mobile" class="btn-text">Выйти</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <nav id="sidebar">
+            <div class="sidebar-header desktop-only">
+                <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+                    <rect width="48" height="48" rx="14" fill="url(#slg)"/>
+                    <text x="24" y="33" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="700" font-size="28" fill="white">&#8381;</text>
+                    <defs><linearGradient id="slg" x1="0" y1="0" x2="48" y2="48"><stop stop-color="#7c5cfc"/><stop offset="1" stop-color="#00d4aa"/></linearGradient></defs>
+                </svg>
+                <span class="logo-text">РодКом</span>
+            </div>
+            <div class="mobile-sidebar-header mobile-only">
+                <span class="logo-text">Меню</span>
+                <button id="sidebar-close" class="btn-icon-round">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+
+            <ul class="nav-links">
+                <li><a href="#" data-page="dashboard" class="nav-link active">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="2" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="2" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="11" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="11" width="7" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/></svg>
+                    <span class="nav-label">Дашборд</span>
+                </a></li>
+                <li><a href="#" data-page="transactions" class="nav-link">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5h14M3 10h10M3 15h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span class="nav-label">Операции</span>
+                </a></li>
+                <li id="nav-users" style="display:none"><a href="#" data-page="users" class="nav-link">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M1 17c0-3 2.69-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="14" cy="7" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M15 12c2.2.4 4 2 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span class="nav-label">Пользователи</span>
+                </a></li>
+                <li id="nav-stats" style="display:none"><a href="#" data-page="stats" class="nav-link">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17V9M8 17V5M13 17V10M18 17V3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                    <span class="nav-label">Статистика</span>
+                </a></li>
+            </ul>
+            <div class="sidebar-footer">
+                <div id="user-info" class="user-info">
+                    <span id="user-name" class="user-name">—</span>
+                    <span id="user-role-badge" class="role-badge">—</span>
+                </div>
+                <button id="btn-logout" class="btn-text-logout">Выйти</button>
+            </div>
+        </nav>
+
+        <!-- Content -->
+        <main id="content">
+            <!-- Dashboard Page -->
+            <section id="page-dashboard" class="page active">
+                <header class="page-header">
+                    <h2>Дашборд</h2>
+                </header>
+
+                <!-- Hero balance -->
+                <div class="hero-balance">
+                    <div class="hero-bg-shape"></div>
+                    <div class="hero-bg-shape hero-bg-shape-2"></div>
+                    <div class="hero-balance-inner">
+                        <div class="hero-label">Баланс фонда</div>
+                        <div id="stat-balance" class="hero-amount">—</div>
+                        <div id="ratio-bar" class="ratio-bar"></div>
+                        <div class="ratio-legend">
+                            <span class="ratio-leg-item leg-income">
+                                <span class="leg-dot"></span> Доходы: <b id="stat-income">—</b>
+                            </span>
+                            <span class="ratio-leg-item leg-expense">
+                                <span class="leg-dot"></span> Расходы: <b id="stat-expense">—</b>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- General budget periods -->
+                <div id="general-collections-section" class="section-block">
+                    <div class="section-header">
+                        <h3>Бюджет по периодам</h3>
+                    </div>
+                    <div id="general-collections-grid" class="budget-grid"></div>
+                </div>
+
+                <!-- Event collections -->
+                <div id="events-section" class="section-block" style="display:none">
+                    <div class="section-header">
+                        <h3>Целевые сборы</h3>
+                        <span class="section-badge" id="events-count"></span>
+                    </div>
+                    <div id="events-scroll" class="events-scroll"></div>
+                </div>
+
+                <div class="dash-row">
+                    <!-- Expense donut -->
+                    <div class="card glass-card">
+                        <div class="card-header"><h3>Расходы по категориям</h3></div>
+                        <div class="donut-section">
+                            <div id="donut-chart" class="donut"></div>
+                            <div id="donut-legend" class="donut-legend"></div>
+                        </div>
+                    </div>
+                    <!-- Recent transactions -->
+                    <div class="card glass-card">
+                        <div class="card-header"><h3>Последние операции</h3></div>
+                        <div id="recent-transactions"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Transactions Page -->
+            <section id="page-transactions" class="page">
+                <header class="page-header">
+                    <div class="page-header-left">
+                        <button id="btn-back-to-dash" class="btn-back" style="display:none" title="Назад на дашборд">
+                            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11 4L6 9l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Назад
+                        </button>
+                        <h2>Операции</h2>
+                    </div>
+                    <div class="page-actions">
+                        <button id="btn-add-tx" class="btn btn-primary" style="display:none">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            Добавить
+                        </button>
+                    </div>
+                </header>
+                <div class="filters-bar">
+                    <select id="filter-type" class="input">
+                        <option value="">Все типы</option>
+                        <option value="income">Доходы</option>
+                        <option value="expense">Расходы</option>
+                    </select>
+                    <select id="filter-collection" class="input">
+                        <option value="">Все сборы</option>
+                    </select>
+                    <select id="filter-category" class="input">
+                        <option value="">Все категории</option>
+                    </select>
+                </div>
+                <div class="table-container glass-card">
+                    <table class="data-table" id="transactions-table">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>Сумма</th>
+                                <th>За кого / Сбор</th>
+                                <th>Чек</th>
+                                <th class="col-actions">Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-body"></tbody>
+                    </table>
+                </div>
+                <div id="transactions-cards" class="tx-cards-list"></div>
+                <div id="pagination" class="pagination"></div>
+            </section>
+
+            <!-- Users Page -->
+            <section id="page-users" class="page">
+                <header class="page-header">
+                    <h2>Пользователи</h2>
+                    <button id="btn-add-user" class="btn btn-primary" onclick="document.getElementById('add-user-form').style.display=document.getElementById('add-user-form').style.display==='none'?'block':'none'">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                        Добавить
+                    </button>
+                </header>
+                <div id="add-user-form" class="card glass-card" style="display:none;margin-bottom:20px">
+                    <h3 style="margin-bottom:16px">Добавить / назначить роль</h3>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+                        <div class="form-group" style="margin:0;flex:1;min-width:140px">
+                            <label>Telegram ID</label>
+                            <input type="number" id="reg-tg-id" class="input" placeholder="123456789">
+                        </div>
+                        <div class="form-group" style="margin:0;flex:1;min-width:140px">
+                            <label>Имя (необяз.)</label>
+                            <input type="text" id="reg-name" class="input" placeholder="Иванов Иван">
+                        </div>
+                        <div class="form-group" style="margin:0;min-width:140px">
+                            <label>Роль</label>
+                            <select id="reg-role" class="input">
+                                <option value="viewer">Наблюдатель</option>
+                                <option value="treasurer">Казначей</option>
+                                <option value="admin">Администратор</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="registerUser()">Сохранить</button>
+                    </div>
+                </div>
+                <div class="table-container glass-card users-table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Имя</th>
+                                <th>Telegram ID</th>
+                                <th>Роль</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-body"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Stats Page -->
+            <section id="page-stats" class="page">
+                <header class="page-header">
+                    <h2>Статистика</h2>
+                </header>
+                <div class="stats-cards-grid">
+                    <div class="stat-mini" style="--accent:#7c5cfc">
+                        <div class="stat-mini-icon">
+                            <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M1 17c0-3 2.69-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="14" cy="7" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M15 12c2.2.4 4 2 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        </div>
+                        <div class="stat-mini-num" id="stat-total-users">—</div>
+                        <div class="stat-mini-label">Пользователей</div>
+                    </div>
+                    <div class="stat-mini" style="--accent:#00d4aa">
+                        <div class="stat-mini-icon">
+                            <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="stat-mini-num" id="stat-active-7d">—</div>
+                        <div class="stat-mini-label">Актив за 7д</div>
+                    </div>
+                    <div class="stat-mini" style="--accent:#60a5fa">
+                        <div class="stat-mini-icon">
+                            <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 7h16" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="11" r="1" fill="currentColor"/><circle cx="10" cy="11" r="1" fill="currentColor"/></svg>
+                        </div>
+                        <div class="stat-mini-num" id="stat-active-30d">—</div>
+                        <div class="stat-mini-label">Актив за 30д</div>
+                    </div>
+                    <div class="stat-mini" style="--accent:#f59e0b">
+                        <div class="stat-mini-icon">
+                            <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><path d="M10 2l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6l2-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="stat-mini-num" id="stat-logins-today">—</div>
+                        <div class="stat-mini-label">Входов сегодня</div>
+                    </div>
+                </div>
+
+                <div class="stats-two-col">
+                    <div class="card glass-card">
+                        <div class="card-header"><h3>Способы входа <small>(30д)</small></h3></div>
+                        <div class="stats-bars" id="stats-login-bars"></div>
+                        <div class="stats-login-totals">
+                            <div class="stats-lt-item"><span>За 7 дней</span><b id="stat-logins-7d">—</b></div>
+                            <div class="stats-lt-item"><span>За 30 дней</span><b id="stat-logins-30d">—</b></div>
+                        </div>
+                    </div>
+                    <div class="card glass-card">
+                        <div class="card-header"><h3>Операции</h3></div>
+                        <div class="stats-tx-cards">
+                            <div class="stats-tx-card">
+                                <div class="stats-tx-period">7 дней</div>
+                                <div class="stats-tx-num" id="stat-tx-7d">—</div>
+                                <div class="stats-tx-sub">создано</div>
+                            </div>
+                            <div class="stats-tx-card">
+                                <div class="stats-tx-period">30 дней</div>
+                                <div class="stats-tx-num" id="stat-tx-30d">—</div>
+                                <div class="stats-tx-sub">создано</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card glass-card">
+                    <div class="card-header"><h3>Топ активных <small>(30д)</small></h3></div>
+                    <div id="stats-top-users-list" class="stats-top-list"></div>
+                </div>
+
+                <div class="card glass-card">
+                    <div class="card-header"><h3>Журнал действий</h3></div>
+                    <div id="stats-usage-log" class="stats-log-list"></div>
+                    <div id="stats-pagination" class="pagination"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div id="modal-overlay" class="modal-overlay">
+        <div class="modal" id="tx-modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Новая операция</h3>
+                <button class="btn-icon-round modal-close" aria-label="Закрыть">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <form id="tx-form" class="modal-body">
+                <input type="hidden" id="tx-id">
+                <div class="form-group">
+                    <label>Тип операции</label>
+                    <div class="toggle-group">
+                        <input type="radio" name="type" id="type-income" value="income" checked>
+                        <label for="type-income">Взнос (Доход)</label>
+                        <input type="radio" name="type" id="type-expense" value="expense">
+                        <label for="type-expense">Расход</label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Сумма (&#8381;)</label>
+                    <input type="number" id="tx-amount" class="input" step="0.01" min="0.01" required placeholder="0.00">
+                </div>
+
+                <div class="form-group" id="group-payer">
+                    <label>За кого (ФИО / Имя ребенка)</label>
+                    <input type="text" id="tx-payer" class="input" placeholder="Напр: Иванов Иван">
+                </div>
+
+                <div class="form-group" id="group-category" style="display:none">
+                    <label>Категория расхода</label>
+                    <input type="hidden" id="tx-category" value="">
+                    <div id="cat-chips" class="cat-chips">
+                        <button type="button" class="cat-chip" data-cat="Канцелярия">Канцелярия</button>
+                        <button type="button" class="cat-chip" data-cat="Подарки">Подарки</button>
+                        <button type="button" class="cat-chip" data-cat="Мероприятия">Мероприятия</button>
+                        <button type="button" class="cat-chip" data-cat="Питание">Питание</button>
+                        <button type="button" class="cat-chip" data-cat="Транспорт">Транспорт</button>
+                        <button type="button" class="cat-chip" data-cat="Украшения">Украшения</button>
+                        <button type="button" class="cat-chip" data-cat="Прочее">Прочее</button>
+                    </div>
+                    <input type="text" id="tx-category-custom" class="input" placeholder="Или введите свою..." style="margin-top:8px">
+                </div>
+
+                <div class="form-group">
+                    <label>Целевой сбор</label>
+                    <select id="tx-collection" class="input">
+                        <option value="">— Выбрать сбор —</option>
+                        <option value="new">+ Новый тип (вручную)...</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="group-new-collection" style="display:none">
+                    <label>Название нового сбора</label>
+                    <input type="text" id="tx-new-collection" class="input" placeholder="Напр: 1 полугодие">
+                    <div class="form-group" style="margin-top:8px;margin-bottom:0">
+                        <label>Тип сбора</label>
+                        <div class="toggle-group toggle-small">
+                            <input type="radio" name="new_coll_type" id="coll-type-general" value="general" checked>
+                            <label for="coll-type-general">Период</label>
+                            <input type="radio" name="new_coll_type" id="coll-type-event" value="event">
+                            <label for="coll-type-event">Целевой</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Описание (необязательно)</label>
+                    <textarea id="tx-description" class="input" rows="2" placeholder="Детали операции"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Дата</label>
+                    <input type="date" id="tx-date" class="input">
+                </div>
+
+                <div class="form-group">
+                    <label>Фото чеков / Подтверждения</label>
+                    <div id="photo-gallery" class="photo-gallery"></div>
+                    <input type="file" id="tx-photo" class="input" accept="image/*" multiple>
+                    <div id="photo-preview" class="photo-preview"></div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-close">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Detail modal -->
+    <div id="detail-modal" class="modal-overlay">
+        <div class="modal detail-modal">
+            <div class="modal-header">
+                <h3 id="detail-title">Детали операции</h3>
+                <button class="btn-icon-round detail-close" aria-label="Закрыть">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+            <div class="modal-body" id="detail-body"></div>
+        </div>
+    </div>
+
+    <!-- Photo viewer modal -->
+    <div id="photo-modal" class="modal-overlay">
+        <div class="photo-viewer">
+            <button class="btn-icon-round photo-close" aria-label="Закрыть">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+            <img id="photo-viewer-img" src="" alt="Фото чека">
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

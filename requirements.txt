@@ -1,0 +1,10 @@
+aiogram
+sqlalchemy
+aiosqlite
+python-dotenv
+# pandas - removed to speed up build, not used in new server.py
+openpyxl
+fastapi
+uvicorn
+python-jose
+python-multipart

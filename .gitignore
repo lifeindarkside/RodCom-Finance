@@ -1,0 +1,12 @@
+.env
+*.db
+*.db-shm
+*.db-wal
+uploads/*
+!uploads/.gitkeep
+venv/
+__pycache__/
+*.pyc
+*.bak
+.idea/
+.vscode/

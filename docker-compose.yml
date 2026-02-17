@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    container_name: fin_control
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Moscow
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/rodcom.db:/app/rodcom.db
+      - ./data/uploads:/app/uploads

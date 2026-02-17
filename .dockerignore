@@ -1,0 +1,10 @@
+.env
+*.db*
+uploads/*
+venv/
+__pycache__/
+*.pyc
+*.bak
+.git/
+*.md
+tests/

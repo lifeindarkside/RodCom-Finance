@@ -1,4 +1,7 @@
+import asyncio
 import io
+import os
+import zipfile
 from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -533,6 +536,84 @@ async def compliance_export(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/export-zip")
+async def compliance_export_zip(
+    date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
+    date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
+    user=Depends(_require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(_get_db),
+):
+    from config import UPLOAD_DIR
+    import s3_storage
+
+    d_from = parse_date(date_from, "date_from")
+    d_to = parse_date(date_to, "date_to")
+
+    transactions = await _get_transactions(db, d_from, d_to)
+    if not transactions:
+        raise HTTPException(status_code=404, detail="Нет операций за указанный период")
+
+    collections_map, users_map = await _get_maps(db, transactions)
+
+    # Build Excel
+    wb = Workbook()
+    _build_summary_sheet(wb.active, transactions, d_from, d_to, collections_map, users_map)
+    _build_operations_sheet(wb.create_sheet(), transactions, collections_map, users_map)
+    _build_legal_sheet(wb.create_sheet())
+
+    excel_buf = io.BytesIO()
+    wb.save(excel_buf)
+    excel_data = excel_buf.getvalue()
+
+    # Collect photo filenames
+    photo_files = []
+    for t in transactions:
+        if t.photo_path:
+            for p in t.photo_path.split(","):
+                p = p.strip()
+                if p:
+                    photo_files.append(p)
+
+    # Build ZIP
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        report_name = f"financial_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        zf.writestr(report_name, excel_data)
+
+        for filename in photo_files:
+            photo_data = None
+            local_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.isfile(local_path):
+                with open(local_path, "rb") as f:
+                    photo_data = f.read()
+            elif s3_storage.is_configured():
+                photo_data = await asyncio.to_thread(
+                    lambda fn=filename: s3_storage.download(f"photos/{fn}") or s3_storage.download(fn)
+                )
+            if photo_data:
+                zf.writestr(f"receipts/{filename}", photo_data)
+
+    zip_buf.seek(0)
+
+    # Audit log
+    entry = AuditLog(
+        user_id=int(user["sub"]),
+        action="export",
+        entity_type="compliance",
+        details=f"Экспорт ZIP {d_from.strftime('%d.%m.%Y')} — {d_to.strftime('%d.%m.%Y')}, {len(transactions)} операций, {len(photo_files)} фото",
+    )
+    db.add(entry)
+    await db.commit()
+
+    zip_filename = f"financial_report_{datetime.now().strftime('%Y%m%d')}.zip"
+
+    return StreamingResponse(
+        zip_buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )
 
 

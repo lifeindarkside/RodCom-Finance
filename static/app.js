@@ -1167,6 +1167,7 @@ function initCompliancePage() {
 
         document.getElementById('compl-btn-load').addEventListener('click', loadCompliance);
         document.getElementById('compl-btn-export').addEventListener('click', exportCompliance);
+        document.getElementById('compl-btn-export-zip').addEventListener('click', exportComplianceZip);
     }
 }
 
@@ -1182,11 +1183,13 @@ async function loadCompliance() {
     var emptyEl = document.getElementById('compl-empty');
     var resultsEl = document.getElementById('compl-results');
     var exportBtn = document.getElementById('compl-btn-export');
+    var exportZipBtn = document.getElementById('compl-btn-export-zip');
 
     loadingEl.style.display = 'block';
     emptyEl.style.display = 'none';
     resultsEl.style.display = 'none';
     exportBtn.disabled = true;
+    exportZipBtn.disabled = true;
 
     try {
         var params = 'date_from=' + dateFrom + '&date_to=' + dateTo;
@@ -1205,6 +1208,7 @@ async function loadCompliance() {
 
         resultsEl.style.display = 'block';
         exportBtn.disabled = false;
+        exportZipBtn.disabled = false;
 
         // Summary cards
         document.getElementById('compl-income').textContent = fmtMoney(summary.total_income);
@@ -1308,6 +1312,48 @@ async function exportCompliance() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Скачать Excel';
+    }
+}
+
+async function exportComplianceZip() {
+    var dateFrom = document.getElementById('compl-date-from').value;
+    var dateTo = document.getElementById('compl-date-to').value;
+    if (!dateFrom || !dateTo) {
+        showToast('Укажите период', 'error');
+        return;
+    }
+
+    var btn = document.getElementById('compl-btn-export-zip');
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M7 4h2M7 6h2M7 8h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Формирование...';
+
+    try {
+        var token = localStorage.getItem('token');
+        var res = await fetch(API_URL + '/compliance/export-zip?date_from=' + dateFrom + '&date_to=' + dateTo, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) {
+            var err = await res.json();
+            throw new Error(err.detail || 'Ошибка экспорта');
+        }
+        var blob = await res.blob();
+        var disposition = res.headers.get('Content-Disposition') || '';
+        var filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+        var filename = filenameMatch ? filenameMatch[1] : 'financial_report.zip';
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Архив скачан', 'success');
+    } catch (e) {
+        showToast(e.message || 'Ошибка экспорта', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 1h8a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5"/><path d="M7 4h2M7 6h2M7 8h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Скачать ZIP + фото';
     }
 }
 

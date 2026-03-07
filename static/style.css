@@ -303,7 +303,7 @@ h2 { font-size: 26px; font-weight: 700; }
 @media (max-width: 480px) { .detail-grid { grid-template-columns: 1fr; } }
 .detail-photo { border-radius: var(--radius-md); max-width: 100%; margin-top: 8px; cursor: pointer; }
 .detail-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.detail-photos img { max-width: 100px; max-height: 100px; border-radius: var(--radius-sm); cursor: pointer; object-fit: cover; }
+.detail-photos img { max-width: 100px; max-height: 100px; border-radius: var(--radius-sm); cursor: pointer; object-fit: cover; background: #fff; }
 
 /* === PHOTO GALLERY === */
 .photo-gallery { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
@@ -313,7 +313,7 @@ h2 { font-size: 26px; font-weight: 700; }
 .photo-gallery-item.pending { border-color: var(--primary); }
 .photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .photo-viewer { width: 100%; height: 100%; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; }
-.photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; touch-action: none; cursor: grab; }
+.photo-viewer img { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center center; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; touch-action: none; cursor: grab; background: #fff; }
 .photo-viewer img.dragging { cursor: grabbing; }
 .photo-close { position: fixed; top: 16px; right: 16px; z-index: 210; background: rgba(0,0,0,0.6) !important; color: #fff !important; }
 #photo-modal { z-index: 200; }

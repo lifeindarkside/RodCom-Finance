@@ -40,7 +40,15 @@
 - Доходы (взносы) и расходы с привязкой к сборам
 - Два типа сборов: **периоды бюджета** (полугодие, четверть) и **целевые** (экскурсии, подарки)
 - Загрузка фото чеков и подтверждающих документов
+- Хранение фото в S3-совместимом хранилище (Selectel и др.)
 - Дашборд с балансом, категориями расходов и последними операциями
+- Переключение между активными сборами и архивом
+
+**Отчётность для банка (115-ФЗ)**
+- Генерация Excel-отчёта за произвольный период
+- Три листа: **Сводка** (итоги, разбивка по сборам и категориям), **Все операции** (детализация), **Правовое обоснование** (ссылки на 115-ФЗ, 273-ФЗ, 152-ФЗ)
+- Готовый документ для предоставления в банк при запросе об источниках средств
+- Настройки печати, форматирование сумм в рублях, автоподбор ширины колонок
 
 **Управление и безопасность**
 - Роли: администратор, казначей, наблюдатель
@@ -57,7 +65,9 @@
 | Backend | Python 3.12, FastAPI, SQLAlchemy (async), SQLite |
 | Telegram Bot | aiogram 3 |
 | Frontend | Vanilla JS + CSS (без фреймворков, SPA) |
-| Деплой | Docker, docker-compose |
+| Хранилище | S3-совместимое (Selectel, MinIO и др.) |
+| Отчёты | openpyxl (Excel) |
+| Деплой | Docker, docker-compose, GitHub Actions |
 
 ---
 
@@ -67,8 +77,8 @@
 
 ```bash
 # 1. Клонируйте репозиторий
-git clone https://github.com/YOUR_USERNAME/rodcom-finance.git
-cd rodcom-finance
+git clone https://github.com/lifeindarkside/RodCom-Finance.git
+cd RodCom-Finance
 
 # 2. Создайте .env из шаблона и заполните
 cp .env.example .env
@@ -107,6 +117,11 @@ uvicorn server:app --host 0.0.0.0 --port 8080
 | `BOT_NAME` | да | Username бота без `@` (для Login Widget) |
 | `UPLOAD_DIR` | | Папка загрузок (по умолчанию `uploads`) |
 | `JWT_EXPIRE_HOURS` | | Время жизни токена, часы (по умолчанию `720`) |
+| `S3_ENDPOINT` | | Эндпоинт S3-хранилища |
+| `S3_ACCESS_KEY` | | Ключ доступа S3 |
+| `S3_SECRET_KEY` | | Секретный ключ S3 |
+| `S3_BUCKET` | | Имя бакета S3 |
+| `S3_REGION` | | Регион S3 (по умолчанию `ru-1`) |
 
 > Сгенерировать `JWT_SECRET`: `python -c "import secrets; print(secrets.token_hex(32))"`
 
@@ -126,6 +141,8 @@ uvicorn server:app --host 0.0.0.0 --port 8080
 ```
 .
 ├── server.py            # FastAPI — API + раздача SPA
+├── compliance.py        # Модуль отчётности (115-ФЗ, Excel)
+├── s3_storage.py        # Работа с S3-хранилищем
 ├── bot.py               # Инициализация Telegram-бота
 ├── config.py            # Конфигурация из .env
 ├── database.py          # SQLAlchemy async engine (SQLite + WAL)
@@ -141,6 +158,9 @@ uvicorn server:app --host 0.0.0.0 --port 8080
 │   ├── index.html       # SPA — единственная HTML-страница
 │   ├── app.js           # Вся клиентская логика
 │   └── style.css        # Стили
+├── .github/
+│   └── workflows/
+│       └── docker-build.yml  # CI: сборка Docker-образа
 ├── tests/               # Тесты
 ├── Dockerfile
 ├── docker-compose.yml

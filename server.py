@@ -17,6 +17,7 @@ from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_HOURS, UPLOAD_DIR, BOT_TOKEN, BOT_NAME, ALLOWED_CHAT_ID, ADMIN_IDS
 import s3_storage
+from compliance import router as compliance_router
 
 def verify_telegram_hash(data: dict, bot_token: str) -> bool:
     check_hash = data.pop("hash", None)
@@ -51,6 +52,7 @@ from database import AsyncSessionLocal, engine, Base
 from models import User, Transaction, AuditLog, UsageLog, Collection
 
 app = FastAPI(title="РодКом Финансы", docs_url="/api/docs")
+app.include_router(compliance_router)
 security = HTTPBearer(auto_error=False)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)

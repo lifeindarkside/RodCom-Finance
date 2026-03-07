@@ -101,6 +101,10 @@
                     <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="7" cy="7" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M1 17c0-3 2.69-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="14" cy="7" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M15 12c2.2.4 4 2 4 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                     <span class="nav-label">Пользователи</span>
                 </a></li>
+                <li id="nav-compliance" style="display:none"><a href="#" data-page="compliance" class="nav-link">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 2h8l4 4v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 2v4h4M7 10h6M7 13h6M7 16h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="nav-label">Отчётность</span>
+                </a></li>
                 <li id="nav-stats" style="display:none"><a href="#" data-page="stats" class="nav-link">
                     <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17V9M8 17V5M13 17V10M18 17V3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                     <span class="nav-label">Статистика</span>
@@ -270,6 +274,85 @@
                         </thead>
                         <tbody id="users-body"></tbody>
                     </table>
+                </div>
+            </section>
+
+            <!-- Compliance Page -->
+            <section id="page-compliance" class="page">
+                <header class="page-header">
+                    <h2>Отчётность (115-ФЗ)</h2>
+                </header>
+
+                <div class="compliance-filters card glass-card">
+                    <div class="compliance-filters-row">
+                        <div class="form-group" style="margin:0;flex:1;min-width:140px">
+                            <label>Дата начала</label>
+                            <input type="date" id="compl-date-from" class="input">
+                        </div>
+                        <div class="form-group" style="margin:0;flex:1;min-width:140px">
+                            <label>Дата окончания</label>
+                            <input type="date" id="compl-date-to" class="input">
+                        </div>
+                        <div class="form-group" style="margin:0;display:flex;align-items:flex-end;gap:8px">
+                            <button id="compl-btn-load" class="btn btn-primary">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1 1 1.05 3.36" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M2 12V8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                Загрузить
+                            </button>
+                            <button id="compl-btn-export" class="btn btn-secondary" disabled>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                Скачать Excel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="compl-loading" class="compl-loading" style="display:none">
+                    <div class="auth-spinner"></div>
+                    <p>Загрузка данных...</p>
+                </div>
+
+                <div id="compl-empty" class="compl-empty" style="display:none">
+                    <p>Нет операций за выбранный период</p>
+                </div>
+
+                <div id="compl-results" style="display:none">
+                    <!-- Summary cards -->
+                    <div class="compl-summary-grid">
+                        <div class="compl-summary-card" style="--accent:#00d4aa">
+                            <div class="compl-summary-label">Поступления</div>
+                            <div class="compl-summary-val" id="compl-income">0 ₽</div>
+                        </div>
+                        <div class="compl-summary-card" style="--accent:#ff6b6b">
+                            <div class="compl-summary-label">Расходы</div>
+                            <div class="compl-summary-val" id="compl-expense">0 ₽</div>
+                        </div>
+                        <div class="compl-summary-card" style="--accent:#7c5cfc">
+                            <div class="compl-summary-label">Баланс</div>
+                            <div class="compl-summary-val" id="compl-balance">0 ₽</div>
+                        </div>
+                        <div class="compl-summary-card" style="--accent:#60a5fa">
+                            <div class="compl-summary-label">Операций</div>
+                            <div class="compl-summary-val" id="compl-tx-count">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Expense by category -->
+                    <div class="card glass-card" style="margin-bottom:20px">
+                        <div class="card-header"><h3>Расходы по категориям</h3></div>
+                        <div id="compl-categories" class="compl-categories"></div>
+                    </div>
+
+                    <!-- Collections summary -->
+                    <div class="card glass-card" style="margin-bottom:20px">
+                        <div class="card-header"><h3>Сборы за период</h3></div>
+                        <div id="compl-collections" class="compl-table-wrap"></div>
+                    </div>
+
+                    <!-- Payers list -->
+                    <div class="card glass-card" style="margin-bottom:20px">
+                        <div class="card-header"><h3>За кого (ФИО ребёнка)</h3></div>
+                        <div id="compl-payers" class="compl-table-wrap"></div>
+                    </div>
                 </div>
             </section>
 
@@ -465,6 +548,7 @@
         </div>
     </div>
 
+    <div id="toast-container" class="toast-container"></div>
     <script src="/static/app.js"></script>
 </body>
 

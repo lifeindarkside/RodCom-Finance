@@ -213,6 +213,7 @@ function loadPage(pageName, source) {
     if (pageName === 'dashboard') loadDashboard();
     if (pageName === 'transactions') loadTransactions();
     if (pageName === 'users') loadUsers();
+    if (pageName === 'compliance') initCompliancePage();
     if (pageName === 'stats') loadStats();
 }
 
@@ -226,6 +227,9 @@ function updateUserInfo() {
     if (currentUser.role === 'admin') {
         document.getElementById('nav-users').style.display = 'block';
         document.getElementById('nav-stats').style.display = 'block';
+    }
+    if (currentUser.role === 'admin' || currentUser.role === 'treasurer') {
+        document.getElementById('nav-compliance').style.display = 'block';
     }
     var canEdit = ['admin', 'treasurer'].indexOf(currentUser.role) !== -1;
     document.getElementById('btn-add-tx').style.display = canEdit ? 'inline-flex' : 'none';
@@ -1133,6 +1137,179 @@ document.addEventListener('click', function() {
     document.getElementById('user-dropdown')?.classList.remove('open');
 });
 document.getElementById('btn-logout-mobile')?.addEventListener('click', logout);
+
+// --- Toast ---
+function showToast(message, type) {
+    type = type || 'info';
+    var container = document.getElementById('toast-container');
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.classList.add('toast-out');
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3000);
+}
+
+// --- Compliance ---
+var _complLoaded = false;
+
+function initCompliancePage() {
+    if (!_complLoaded) {
+        _complLoaded = true;
+        // Set default dates: 1 Jan of current year to today
+        var now = new Date();
+        var yearStart = now.getFullYear() + '-01-01';
+        var today = now.toISOString().split('T')[0];
+        document.getElementById('compl-date-from').value = yearStart;
+        document.getElementById('compl-date-to').value = today;
+
+        document.getElementById('compl-btn-load').addEventListener('click', loadCompliance);
+        document.getElementById('compl-btn-export').addEventListener('click', exportCompliance);
+    }
+}
+
+async function loadCompliance() {
+    var dateFrom = document.getElementById('compl-date-from').value;
+    var dateTo = document.getElementById('compl-date-to').value;
+    if (!dateFrom || !dateTo) {
+        showToast('Укажите период', 'error');
+        return;
+    }
+
+    var loadingEl = document.getElementById('compl-loading');
+    var emptyEl = document.getElementById('compl-empty');
+    var resultsEl = document.getElementById('compl-results');
+    var exportBtn = document.getElementById('compl-btn-export');
+
+    loadingEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    resultsEl.style.display = 'none';
+    exportBtn.disabled = true;
+
+    try {
+        var params = 'date_from=' + dateFrom + '&date_to=' + dateTo;
+        var [summary, collSummary, payers] = await Promise.all([
+            apiCall('/compliance/summary?' + params),
+            apiCall('/compliance/collections-summary?' + params),
+            apiCall('/compliance/payers?' + params),
+        ]);
+
+        loadingEl.style.display = 'none';
+
+        if (summary.transaction_count === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        resultsEl.style.display = 'block';
+        exportBtn.disabled = false;
+
+        // Summary cards
+        document.getElementById('compl-income').textContent = fmtMoney(summary.total_income);
+        document.getElementById('compl-expense').textContent = fmtMoney(summary.total_expense);
+        document.getElementById('compl-balance').textContent = fmtMoney(summary.balance);
+        document.getElementById('compl-tx-count').textContent = summary.transaction_count;
+
+        // Categories
+        var catEl = document.getElementById('compl-categories');
+        catEl.innerHTML = '';
+        if (summary.expense_by_category.length === 0) {
+            catEl.innerHTML = '<div class="stats-empty">Нет расходов</div>';
+        } else {
+            var maxCat = Math.max.apply(null, summary.expense_by_category.map(function(c) { return c.amount; }));
+            var catColors = ['#7c5cfc','#60a5fa','#00d4aa','#f59e0b','#fb923c','#ff6b6b','#f472b6','#94a3b8'];
+            summary.expense_by_category.forEach(function(c, i) {
+                var pct = maxCat > 0 ? Math.round(c.amount / maxCat * 100) : 0;
+                var color = catColors[i % catColors.length];
+                var row = document.createElement('div');
+                row.className = 'compl-cat-row';
+                row.innerHTML =
+                    '<div class="compl-cat-name">' + c.category + '</div>' +
+                    '<div class="compl-cat-bar"><div class="compl-cat-fill" style="width:' + pct + '%;background:' + color + '">' +
+                    (pct > 25 ? '<span class="compl-cat-val">' + fmtMoney(c.amount) + '</span>' : '') +
+                    '</div></div>' +
+                    (pct <= 25 ? '<span class="compl-cat-val-out">' + fmtMoney(c.amount) + '</span>' : '');
+                catEl.appendChild(row);
+            });
+        }
+
+        // Collections table
+        var collEl = document.getElementById('compl-collections');
+        if (collSummary.length === 0) {
+            collEl.innerHTML = '<div class="stats-empty">Нет данных</div>';
+        } else {
+            var html = '<table class="compl-table"><thead><tr><th>Сбор</th><th class="text-right">Поступления</th><th class="text-right">Расходы</th><th class="text-right">Баланс</th><th class="text-right">Операций</th></tr></thead><tbody>';
+            collSummary.forEach(function(c) {
+                var balClass = c.balance >= 0 ? 'text-income' : 'text-expense';
+                html += '<tr><td>' + c.name + '</td><td class="text-right text-income">' + fmtMoney(c.income) + '</td><td class="text-right text-expense">' + fmtMoney(c.expense) + '</td><td class="text-right ' + balClass + '" style="font-weight:600">' + fmtMoney(c.balance) + '</td><td class="text-right">' + c.count + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            collEl.innerHTML = html;
+        }
+
+        // Payers table
+        var payEl = document.getElementById('compl-payers');
+        if (payers.length === 0) {
+            payEl.innerHTML = '<div class="stats-empty">Нет данных</div>';
+        } else {
+            var html2 = '<table class="compl-table"><thead><tr><th>За кого (ФИО ребёнка)</th><th class="text-right">Сумма</th><th class="text-right">Взносов</th><th>Сборы</th></tr></thead><tbody>';
+            payers.forEach(function(p) {
+                html2 += '<tr><td>' + p.payer_name + '</td><td class="text-right text-income">' + fmtMoney(p.total) + '</td><td class="text-right">' + p.count + '</td><td style="font-size:12px;color:var(--text-3)">' + p.collections.join(', ') + '</td></tr>';
+            });
+            html2 += '</tbody></table>';
+            payEl.innerHTML = html2;
+        }
+
+        showToast('Данные загружены', 'success');
+    } catch (e) {
+        loadingEl.style.display = 'none';
+        showToast(e.message || 'Ошибка загрузки', 'error');
+    }
+}
+
+async function exportCompliance() {
+    var dateFrom = document.getElementById('compl-date-from').value;
+    var dateTo = document.getElementById('compl-date-to').value;
+    if (!dateFrom || !dateTo) {
+        showToast('Укажите период', 'error');
+        return;
+    }
+
+    var btn = document.getElementById('compl-btn-export');
+    btn.disabled = true;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Формирование...';
+
+    try {
+        var token = localStorage.getItem('token');
+        var res = await fetch(API_URL + '/compliance/export?date_from=' + dateFrom + '&date_to=' + dateTo, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) {
+            var err = await res.json();
+            throw new Error(err.detail || 'Ошибка экспорта');
+        }
+        var blob = await res.blob();
+        var disposition = res.headers.get('Content-Disposition') || '';
+        var filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+        var filename = filenameMatch ? filenameMatch[1] : 'financial_report.xlsx';
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Отчёт скачан', 'success');
+    } catch (e) {
+        showToast(e.message || 'Ошибка экспорта', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Скачать Excel';
+    }
+}
 
 // --- Stats ---
 var statsUsagePage = 1;

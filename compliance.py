@@ -617,6 +617,89 @@ async def compliance_export_zip(
     )
 
 
+@router.get("/archives")
+async def compliance_archives(
+    user=Depends(_require_role("admin", "treasurer")),
+):
+    """List available archived reports from S3."""
+    import s3_storage
+
+    if not s3_storage.is_configured():
+        return []
+
+    client = s3_storage._get_client()
+    if not client:
+        return []
+
+    try:
+        response = client.list_objects_v2(
+            Bucket=s3_storage.S3_BUCKET, Prefix="reports/", Delimiter=""
+        )
+        objects = response.get("Contents", [])
+
+        # Group by month
+        months = {}
+        for obj in objects:
+            key = obj["Key"]
+            # reports/YYYY_MM/financial_report_YYYY_MM.xlsx
+            parts = key.split("/")
+            if len(parts) < 3:
+                continue
+            month_str = parts[1]  # YYYY_MM
+            if month_str not in months:
+                months[month_str] = {"month": month_str, "files": []}
+
+            filename = parts[2]
+            ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+            months[month_str]["files"].append({
+                "key": key,
+                "filename": filename,
+                "format": ext,
+                "size": obj["Size"],
+                "modified": obj["LastModified"].isoformat(),
+            })
+
+        # Sort by month descending
+        result = sorted(months.values(), key=lambda m: m["month"], reverse=True)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка получения архивов: {e}")
+
+
+@router.get("/archives/download")
+async def compliance_archive_download(
+    key: str = Query(..., description="S3 key файла"),
+    user=Depends(_require_role("admin", "treasurer")),
+):
+    """Download an archived report from S3."""
+    import s3_storage
+
+    # Security: only allow reports/ prefix
+    if not key.startswith("reports/"):
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+
+    if not s3_storage.is_configured():
+        raise HTTPException(status_code=404, detail="S3 не настроен")
+
+    data = await asyncio.to_thread(s3_storage.download, key)
+    if not data:
+        raise HTTPException(status_code=404, detail="Файл не найден")
+
+    filename = key.split("/")[-1]
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    content_types = {
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "zip": "application/zip",
+    }
+    ct = content_types.get(ext, "application/octet-stream")
+
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=ct,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/collections-summary")
 async def compliance_collections_summary(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),

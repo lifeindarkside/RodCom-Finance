@@ -1168,6 +1168,7 @@ function initCompliancePage() {
         document.getElementById('compl-btn-load').addEventListener('click', loadCompliance);
         document.getElementById('compl-btn-export').addEventListener('click', exportCompliance);
         document.getElementById('compl-btn-export-zip').addEventListener('click', exportComplianceZip);
+        loadArchives();
     }
 }
 
@@ -1312,6 +1313,85 @@ async function exportCompliance() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M3 12v1a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Скачать Excel';
+    }
+}
+
+async function loadArchives() {
+    var loadingEl = document.getElementById('compl-archives-loading');
+    var emptyEl = document.getElementById('compl-archives-empty');
+    var container = document.getElementById('compl-archives');
+
+    loadingEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    container.innerHTML = '';
+
+    try {
+        var archives = await apiCall('/compliance/archives');
+        loadingEl.style.display = 'none';
+
+        if (!archives || archives.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        var monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+        var html = '<table class="compl-table"><thead><tr><th>Период</th><th>Файлы</th><th>Обновлён</th></tr></thead><tbody>';
+        for (var i = 0; i < archives.length; i++) {
+            var arch = archives[i];
+            var parts = arch.month.split('_');
+            var year = parts[0];
+            var monthIdx = parseInt(parts[1], 10) - 1;
+            var label = monthNames[monthIdx] + ' ' + year;
+
+            var buttons = '';
+            for (var j = 0; j < arch.files.length; j++) {
+                var f = arch.files[j];
+                var sizeKb = Math.round(f.size / 1024);
+                var sizeLabel = sizeKb > 1024 ? (sizeKb / 1024).toFixed(1) + ' МБ' : sizeKb + ' КБ';
+                var icon = f.format === 'zip' ? 'ZIP + фото' : 'Excel';
+                buttons += '<button class="btn btn-sm btn-secondary" onclick="downloadArchive(\'' + f.key + '\')" style="margin:2px">' + icon + ' (' + sizeLabel + ')</button>';
+            }
+
+            var modified = '';
+            if (arch.files.length > 0) {
+                var d = new Date(arch.files[0].modified);
+                modified = d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+            }
+
+            html += '<tr><td><strong>' + label + '</strong></td><td>' + buttons + '</td><td style="color:var(--text-secondary);font-size:13px">' + modified + '</td></tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    } catch (e) {
+        loadingEl.style.display = 'none';
+        container.innerHTML = '<p style="color:var(--text-secondary);padding:12px">Не удалось загрузить архивы</p>';
+    }
+}
+
+async function downloadArchive(key) {
+    try {
+        var token = localStorage.getItem('token');
+        var res = await fetch(API_URL + '/compliance/archives/download?key=' + encodeURIComponent(key), {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) {
+            var err = await res.json();
+            throw new Error(err.detail || 'Ошибка скачивания');
+        }
+        var blob = await res.blob();
+        var filename = key.split('/').pop();
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Файл скачан', 'success');
+    } catch (e) {
+        showToast(e.message || 'Ошибка скачивания', 'error');
     }
 }
 

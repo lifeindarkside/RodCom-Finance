@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY handlers/ handlers/
 COPY middlewares/ middlewares/
+COPY routers/ routers/
 COPY static/ static/
 
 RUN mkdir -p uploads

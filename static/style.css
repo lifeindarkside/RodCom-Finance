@@ -458,9 +458,15 @@ h2 { font-size: 26px; font-weight: 700; }
 /* === COMPLIANCE PAGE === */
 .compliance-filters { margin-bottom: 20px; }
 .compliance-filters-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.compl-actions { display: flex; align-items: flex-end; gap: 8px; }
+.compl-download-btns { display: flex; gap: 8px; }
 @media (max-width: 768px) {
     .compliance-filters-row { flex-direction: column; align-items: stretch; }
     .compliance-filters-row .form-group { margin: 0 0 12px 0 !important; }
+    .compl-actions { flex-direction: column; }
+    .compl-btn-load { width: 100%; }
+    .compl-download-btns { width: 100%; }
+    .compl-download-btns .btn { flex: 1; }
 }
 .compl-loading { text-align: center; padding: 40px 20px; color: var(--text-3); }
 .compl-loading .auth-spinner { margin: 0 auto 16px; }

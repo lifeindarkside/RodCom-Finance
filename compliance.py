@@ -6,53 +6,20 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose import jwt, JWTError
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-from database import AsyncSessionLocal
+from dependencies import get_db, require_role
 from models import Transaction, Collection, User, AuditLog
-from config import JWT_SECRET, JWT_ALGORITHM
+import s3_storage
+from config import UPLOAD_DIR
 
 router = APIRouter(prefix="/api/compliance", tags=["compliance"])
-_security = HTTPBearer(auto_error=False)
 
-
-async def _get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
-
-
-async def _get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_security),
-    db: AsyncSession = Depends(_get_db),
-):
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Требуется авторизация")
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Недействительный токен")
-    user_id = int(payload.get("sub"))
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Пользователь не найден")
-    return {"sub": str(user.id), "tid": user.telegram_id, "role": user.role, "name": user.name}
-
-
-def _require_role(*roles):
-    async def checker(user=Depends(_get_current_user)):
-        if user["role"] not in roles:
-            raise HTTPException(status_code=403, detail="Недостаточно прав")
-        return user
-    return checker
-
-MONEY_FMT = '#,##0.00 "₽"'
+MONEY_FMT = '#,##0.00 "\u20bd"'
 HEADER_FILL = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
 HEADER_FONT = Font(name="Calibri", bold=True, size=11)
 THIN_BORDER = Border(
@@ -95,7 +62,6 @@ def _style_data_cell(cell, is_money=False):
 def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, collections_map: dict, users_map: dict):
     ws.title = "Сводка"
 
-    # Title
     ws.merge_cells("A1:F1")
     title_cell = ws["A1"]
     title_cell.value = "Финансовый отчёт родительского комитета"
@@ -104,7 +70,7 @@ def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, colle
 
     ws.merge_cells("A2:F2")
     period_cell = ws["A2"]
-    period_cell.value = f"Период: {date_from.strftime('%d.%m.%Y')} — {date_to.strftime('%d.%m.%Y')}"
+    period_cell.value = f"Период: {date_from.strftime('%d.%m.%Y')} \u2014 {date_to.strftime('%d.%m.%Y')}"
     period_cell.font = Font(name="Calibri", size=11, italic=True)
     period_cell.alignment = Alignment(horizontal="center")
 
@@ -114,7 +80,6 @@ def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, colle
     gen_cell.font = Font(name="Calibri", size=10, color="666666")
     gen_cell.alignment = Alignment(horizontal="center")
 
-    # Summary stats
     total_income = sum(t.amount for t in transactions if t.type == "income")
     total_expense = sum(t.amount for t in transactions if t.type == "expense")
     balance = total_income - total_expense
@@ -147,7 +112,6 @@ def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, colle
     c2 = ws.cell(row=row, column=2, value=len(transactions))
     c2.border = THIN_BORDER
 
-    # Income by collection
     row += 2
     ws.cell(row=row, column=1, value="Поступления по сборам").font = SUBTITLE_FONT
     row += 1
@@ -177,7 +141,6 @@ def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, colle
         c3.border = THIN_BORDER
         c3.alignment = Alignment(horizontal="center")
 
-    # Expense by category
     row += 2
     ws.cell(row=row, column=1, value="Расходы по категориям").font = SUBTITLE_FONT
     row += 1
@@ -206,12 +169,10 @@ def _build_summary_sheet(ws, transactions, date_from: date, date_to: date, colle
         c3.number_format = "0.0"
         c3.alignment = Alignment(horizontal="center")
 
-    # Column widths
     ws.column_dimensions["A"].width = 35
     ws.column_dimensions["B"].width = 20
     ws.column_dimensions["C"].width = 18
 
-    # Print settings
     ws.print_area = f"A1:C{row}"
     ws.page_setup.orientation = "portrait"
     ws.page_setup.fitToWidth = 1
@@ -245,7 +206,6 @@ def _build_operations_sheet(ws, transactions, collections_map: dict, users_map: 
             cell = ws.cell(row=row, column=col, value=val)
             _style_data_cell(cell, is_money=(col == 4))
 
-    # Totals row
     if transactions:
         total_row = len(transactions) + 2
         ws.cell(row=total_row, column=1, value="ИТОГО").font = Font(name="Calibri", bold=True, size=11)
@@ -260,12 +220,10 @@ def _build_operations_sheet(ws, transactions, collections_map: dict, users_map: 
         for col in range(2, len(headers) + 1):
             ws.cell(row=total_row, column=col).border = THIN_BORDER
 
-    # Column widths
     widths = [5, 12, 14, 16, 28, 24, 18, 30, 20]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
-    # Print settings
     last_row = len(transactions) + 2
     ws.print_area = f"A1:{get_column_letter(len(headers))}{last_row}"
     ws.page_setup.orientation = "landscape"
@@ -363,7 +321,6 @@ def _build_legal_sheet(ws):
             cell.font = font
         cell.alignment = WRAP_ALIGN
 
-    # Print settings
     ws.page_setup.orientation = "portrait"
     ws.page_setup.fitToWidth = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -405,8 +362,8 @@ async def _get_maps(db: AsyncSession, transactions):
 async def compliance_summary(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")
@@ -441,8 +398,8 @@ async def compliance_transactions(
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")
@@ -493,8 +450,8 @@ async def compliance_transactions(
 async def compliance_export(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")
@@ -520,12 +477,11 @@ async def compliance_export(
     wb.save(buf)
     buf.seek(0)
 
-    # Audit log
     entry = AuditLog(
         user_id=int(user["sub"]),
         action="export",
         entity_type="compliance",
-        details=f"Экспорт отчёта {d_from.strftime('%d.%m.%Y')} — {d_to.strftime('%d.%m.%Y')}, {len(transactions)} операций",
+        details=f"Экспорт отчёта {d_from.strftime('%d.%m.%Y')} \u2014 {d_to.strftime('%d.%m.%Y')}, {len(transactions)} операций",
     )
     db.add(entry)
     await db.commit()
@@ -543,12 +499,9 @@ async def compliance_export(
 async def compliance_export_zip(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
-    from config import UPLOAD_DIR
-    import s3_storage
-
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")
 
@@ -558,7 +511,6 @@ async def compliance_export_zip(
 
     collections_map, users_map = await _get_maps(db, transactions)
 
-    # Build Excel
     wb = Workbook()
     _build_summary_sheet(wb.active, transactions, d_from, d_to, collections_map, users_map)
     _build_operations_sheet(wb.create_sheet(), transactions, collections_map, users_map)
@@ -568,7 +520,6 @@ async def compliance_export_zip(
     wb.save(excel_buf)
     excel_data = excel_buf.getvalue()
 
-    # Collect photo filenames
     photo_files = []
     for t in transactions:
         if t.photo_path:
@@ -577,7 +528,6 @@ async def compliance_export_zip(
                 if p:
                     photo_files.append(p)
 
-    # Build ZIP
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         report_name = f"financial_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
@@ -598,12 +548,11 @@ async def compliance_export_zip(
 
     zip_buf.seek(0)
 
-    # Audit log
     entry = AuditLog(
         user_id=int(user["sub"]),
         action="export",
         entity_type="compliance",
-        details=f"Экспорт ZIP {d_from.strftime('%d.%m.%Y')} — {d_to.strftime('%d.%m.%Y')}, {len(transactions)} операций, {len(photo_files)} фото",
+        details=f"Экспорт ZIP {d_from.strftime('%d.%m.%Y')} \u2014 {d_to.strftime('%d.%m.%Y')}, {len(transactions)} операций, {len(photo_files)} фото",
     )
     db.add(entry)
     await db.commit()
@@ -619,11 +568,8 @@ async def compliance_export_zip(
 
 @router.get("/archives")
 async def compliance_archives(
-    user=Depends(_require_role("admin", "treasurer")),
+    user=Depends(require_role("admin", "treasurer")),
 ):
-    """List available archived reports from S3."""
-    import s3_storage
-
     if not s3_storage.is_configured():
         return []
 
@@ -637,15 +583,13 @@ async def compliance_archives(
         )
         objects = response.get("Contents", [])
 
-        # Group by month
         months = {}
         for obj in objects:
             key = obj["Key"]
-            # reports/YYYY_MM/financial_report_YYYY_MM.xlsx
             parts = key.split("/")
             if len(parts) < 3:
                 continue
-            month_str = parts[1]  # YYYY_MM
+            month_str = parts[1]
             if month_str not in months:
                 months[month_str] = {"month": month_str, "files": []}
 
@@ -659,7 +603,6 @@ async def compliance_archives(
                 "modified": obj["LastModified"].isoformat(),
             })
 
-        # Sort by month descending
         result = sorted(months.values(), key=lambda m: m["month"], reverse=True)
         return result
     except Exception as e:
@@ -669,12 +612,8 @@ async def compliance_archives(
 @router.get("/archives/download")
 async def compliance_archive_download(
     key: str = Query(..., description="S3 key файла"),
-    user=Depends(_require_role("admin", "treasurer")),
+    user=Depends(require_role("admin", "treasurer")),
 ):
-    """Download an archived report from S3."""
-    import s3_storage
-
-    # Security: only allow reports/ prefix
     if not key.startswith("reports/"):
         raise HTTPException(status_code=403, detail="Доступ запрещён")
 
@@ -704,8 +643,8 @@ async def compliance_archive_download(
 async def compliance_collections_summary(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")
@@ -742,8 +681,8 @@ async def compliance_collections_summary(
 async def compliance_payers(
     date_from: str = Query(..., description="Дата начала (YYYY-MM-DD)"),
     date_to: str = Query(..., description="Дата окончания (YYYY-MM-DD)"),
-    user=Depends(_require_role("admin", "treasurer")),
-    db: AsyncSession = Depends(_get_db),
+    user=Depends(require_role("admin", "treasurer")),
+    db: AsyncSession = Depends(get_db),
 ):
     d_from = parse_date(date_from, "date_from")
     d_to = parse_date(date_to, "date_to")

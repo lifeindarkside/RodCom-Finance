@@ -8,3 +8,4 @@ fastapi
 uvicorn
 python-jose
 python-multipart
+boto3

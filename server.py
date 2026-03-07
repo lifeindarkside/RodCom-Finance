@@ -2,12 +2,13 @@ import logging
 import os
 import shutil
 import uuid
+import mimetypes
 from datetime import datetime, timedelta
 from typing import Optional, List
 
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import hmac
 import hashlib
@@ -15,6 +16,7 @@ from jose import jwt, JWTError
 from sqlalchemy import select, func, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_HOURS, UPLOAD_DIR, BOT_TOKEN, BOT_NAME, ALLOWED_CHAT_ID, ADMIN_IDS
+import s3_storage
 
 def verify_telegram_hash(data: dict, bot_token: str) -> bool:
     check_hash = data.pop("hash", None)
@@ -53,12 +55,49 @@ security = HTTPBearer(auto_error=False)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
+
+async def save_upload(photo: UploadFile) -> str | None:
+    if not photo or not photo.filename:
+        return None
+    ext = os.path.splitext(photo.filename)[1] or ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    content = await photo.read()
+    if s3_storage.is_configured():
+        content_type = photo.content_type or mimetypes.guess_type(filename)[0] or 'image/jpeg'
+        if s3_storage.upload(content, filename, content_type):
+            return filename
+        raise HTTPException(status_code=500, detail="Ошибка загрузки файла в хранилище")
+    else:
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        with open(filepath, "wb") as fb:
+            fb.write(content)
+        return filename
+
+def delete_upload(filename: str):
+    if s3_storage.is_configured():
+        s3_storage.delete(filename)
+    local_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(local_path):
+        os.remove(local_path)
+
+@app.get("/uploads/{filename}")
+async def serve_upload(filename: str):
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    local_path = os.path.join(UPLOAD_DIR, filename)
+    if os.path.isfile(local_path):
+        return FileResponse(local_path, headers={"Cache-Control": "public, max-age=86400"})
+    if s3_storage.is_configured():
+        data = s3_storage.download(filename)
+        if data:
+            ct = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
+    raise HTTPException(status_code=404, detail="File not found")
 
 def create_token(user_id: int, telegram_id: int, role: str, name: str) -> str:
     payload = {
@@ -406,14 +445,9 @@ async def create_transaction(
     photo_paths = []
     if photos:
         for photo in photos:
-            if photo and photo.filename:
-                ext = os.path.splitext(photo.filename)[1] or ".jpg"
-                filename = f"{uuid.uuid4().hex}{ext}"
-                filepath = os.path.join(UPLOAD_DIR, filename)
-                with open(filepath, "wb") as fb:
-                    content = await photo.read()
-                    fb.write(content)
-                photo_paths.append(filename)
+            fname = await save_upload(photo)
+            if fname:
+                photo_paths.append(fname)
     photo_path = ",".join(photo_paths) if photo_paths else None
     tx_date = datetime.now()
     if date:
@@ -483,19 +517,13 @@ async def update_transaction(
         for dp in delete_photos.split(","):
             dp = dp.strip()
             if dp and dp in existing_photos:
-                old_path = os.path.join(UPLOAD_DIR, dp)
-                if os.path.exists(old_path): os.remove(old_path)
+                delete_upload(dp)
                 existing_photos.remove(dp)
     if photos:
         for photo in photos:
-            if photo and photo.filename:
-                ext = os.path.splitext(photo.filename)[1] or ".jpg"
-                filename = f"{uuid.uuid4().hex}{ext}"
-                filepath = os.path.join(UPLOAD_DIR, filename)
-                with open(filepath, "wb") as fb:
-                    content = await photo.read()
-                    fb.write(content)
-                existing_photos.append(filename)
+            fname = await save_upload(photo)
+            if fname:
+                existing_photos.append(fname)
     tx.photo_path = ",".join(existing_photos) if existing_photos else None
     await db.commit()
     await audit_log(db, int(user["sub"]), "update", "transaction", tx.id, f"{tx.type} {tx.amount}")
@@ -512,8 +540,7 @@ async def delete_transaction(tx_id: int, user=Depends(require_role("admin")), db
         for p in tx.photo_path.split(","):
             p = p.strip()
             if p:
-                filepath = os.path.join(UPLOAD_DIR, p)
-                if os.path.exists(filepath): os.remove(filepath)
+                delete_upload(p)
     await db.delete(tx)
     await db.commit()
     await audit_log(db, int(user["sub"]), "delete", "transaction", tx_id, f"{tx.type} {tx.amount}")

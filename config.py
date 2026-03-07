@@ -18,3 +18,10 @@ JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "72"))
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8080")
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploads")
 BOT_NAME = os.getenv("BOT_NAME", "")
+
+# S3 Storage
+S3_ENDPOINT = os.getenv("S3_ENDPOINT", "")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+S3_BUCKET = os.getenv("S3_BUCKET", "")
+S3_REGION = os.getenv("S3_REGION", "ru-1")

@@ -250,6 +250,8 @@ async function apiCall(endpoint, options) {
 
 // --- Dashboard ---
 var EXPENSE_COLORS = ['#7c5cfc','#60a5fa','#00d4aa','#f59e0b','#fb923c','#ff6b6b','#f472b6','#94a3b8'];
+var dashShowArchive = false;
+var _dashData = null;
 
 function shortNum(n) {
     if (n >= 1000000) return (n/1000000).toFixed(1).replace(/\.0$/, '') + 'M';
@@ -259,6 +261,122 @@ function shortNum(n) {
 
 function fmtMoney(n) {
     return n.toLocaleString('ru-RU') + ' \u20bd';
+}
+
+function _isArchived(c) {
+    return c.income > 0 && Math.abs(c.balance) < 0.01;
+}
+
+function renderCollections(data) {
+    var allColls = data.coll_balances.filter(function(c) { return !(c.income === 0 && c.expense === 0); });
+    var activeCount = allColls.filter(function(c) { return !_isArchived(c); }).length;
+    var archiveCount = allColls.filter(function(c) { return _isArchived(c); }).length;
+
+    // Render toggle
+    var toggleEl = document.getElementById('coll-toggle');
+    if (archiveCount === 0 && !dashShowArchive) {
+        toggleEl.innerHTML = '';
+    } else {
+        toggleEl.innerHTML =
+            '<button class="coll-toggle-btn' + (!dashShowArchive ? ' active' : '') + '" data-mode="active">' +
+                'Активные <span class="coll-toggle-count">' + activeCount + '</span>' +
+            '</button>' +
+            '<button class="coll-toggle-btn' + (dashShowArchive ? ' active' : '') + '" data-mode="archive">' +
+                'Архив <span class="coll-toggle-count">' + archiveCount + '</span>' +
+            '</button>';
+        toggleEl.querySelectorAll('.coll-toggle-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                dashShowArchive = btn.getAttribute('data-mode') === 'archive';
+                if (_dashData) renderCollections(_dashData);
+            });
+        });
+    }
+
+    // Filter by current mode
+    var filtered = allColls.filter(function(c) {
+        return dashShowArchive ? _isArchived(c) : !_isArchived(c);
+    });
+    var generalColls = filtered.filter(function(c) { return c.collection_type !== 'event'; });
+    var eventColls = filtered.filter(function(c) { return c.collection_type === 'event'; });
+    var isArch = dashShowArchive;
+
+    // Render General Collections
+    var generalGrid = document.getElementById('general-collections-grid');
+    generalGrid.innerHTML = '';
+    if (generalColls.length === 0) {
+        generalGrid.innerHTML = '<div class="dash-empty">' + (isArch ? 'Нет завершённых периодов' : 'Нет активных периодов бюджета') + '</div>';
+    } else {
+        generalColls.forEach(function(c) {
+            var maxInc = Math.max.apply(null, generalColls.map(function(x) { return x.income || 0; }).concat([1]));
+            var pct = maxInc ? Math.min(c.income / maxInc * 100, 100) : 0;
+            var spentPct = c.income ? Math.min(c.expense / c.income * 100, 100) : 0;
+            var balClass = c.balance >= 0 ? 'positive' : 'negative';
+            var card = document.createElement('div');
+            card.className = 'budget-card' + (isArch ? ' archived' : '');
+            card.setAttribute('data-cid', c.id);
+            card.innerHTML =
+                '<div class="budget-card-name">' + c.name + (isArch ? '<span class="archived-badge">Завершён</span>' : '') + '</div>' +
+                '<div class="budget-card-balance ' + balClass + '">' + fmtMoney(c.balance) + '</div>' +
+                '<div class="budget-card-stats">' +
+                    '<div class="budget-card-stat income">' +
+                        '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 12V4M5 7l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                        fmtMoney(c.income) +
+                    '</div>' +
+                    '<div class="budget-card-stat expense">' +
+                        '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 4v8M5 9l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+                        fmtMoney(c.expense) +
+                    '</div>' +
+                '</div>' +
+                '<div class="budget-bar">' +
+                    '<div class="budget-bar-fill" style="width:' + pct + '%"></div>' +
+                    '<div class="budget-bar-spent" style="width:' + spentPct + '%"></div>' +
+                '</div>' +
+                (c.payers_count > 0 ? '<div class="budget-card-payers">' +
+                    '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><circle cx="5.5" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 13c0-2.2 2-4 4.5-4s4.5 1.8 4.5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="5.5" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M12 9c1.7.3 3 1.5 3 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>' +
+                    c.payers_count + ' сдали' +
+                '</div>' : '');
+            card.addEventListener('click', function() {
+                loadPage('transactions', 'dashboard');
+                setTimeout(function() {
+                    document.getElementById('filter-collection').value = c.id;
+                    loadTransactions(1);
+                }, 100);
+            });
+            generalGrid.appendChild(card);
+        });
+    }
+
+    // Render Event Collections
+    var eventsSection = document.getElementById('events-section');
+    var eventsScroll = document.getElementById('events-scroll');
+    var eventsCount = document.getElementById('events-count');
+    eventsScroll.innerHTML = '';
+    if (eventColls.length === 0) {
+        eventsSection.style.display = 'none';
+    } else {
+        eventsSection.style.display = 'block';
+        eventsCount.textContent = eventColls.length;
+        eventColls.forEach(function(c) {
+            var card = document.createElement('div');
+            card.className = 'event-card' + (isArch ? ' archived' : '');
+            card.innerHTML =
+                '<div class="event-card-accent"></div>' +
+                '<div class="event-card-name">' + c.name + (isArch ? '<span class="archived-badge">Завершён</span>' : '') + '</div>' +
+                '<div class="event-card-amount">' + fmtMoney(c.income) + '</div>' +
+                '<div class="event-card-info">' +
+                    (c.payers_count > 0 ? '<span>' + c.payers_count + ' сдали</span>' : '') +
+                    (c.expense > 0 ? '<span>Расход: ' + fmtMoney(c.expense) + '</span>' : '') +
+                '</div>';
+            card.addEventListener('click', function() {
+                loadPage('transactions', 'dashboard');
+                setTimeout(function() {
+                    document.getElementById('filter-collection').value = c.id;
+                    loadTransactions(1);
+                }, 100);
+            });
+            eventsScroll.appendChild(card);
+        });
+    }
 }
 
 async function loadDashboard() {
@@ -277,103 +395,9 @@ async function loadDashboard() {
             '<div class="ratio-seg ratio-seg-income" style="width:' + incPct + '%"></div>' +
             '<div class="ratio-seg ratio-seg-expense" style="width:' + expPct + '%"></div>';
 
-        // Split collections by type
-        var generalColls = [];
-        var eventColls = [];
-        data.coll_balances.forEach(function(c) {
-            // Skip collections with 0 income AND 0 expense (empty)
-            if (c.income === 0 && c.expense === 0) return;
-            if (c.collection_type === 'event') {
-                eventColls.push(c);
-            } else {
-                generalColls.push(c);
-            }
-        });
-
-        // Render General Collections (Budget Periods)
-        var generalGrid = document.getElementById('general-collections-grid');
-        var generalSection = document.getElementById('general-collections-section');
-        generalGrid.innerHTML = '';
-
-        if (generalColls.length === 0) {
-            generalGrid.innerHTML = '<div class="dash-empty">Нет активных периодов бюджета</div>';
-        } else {
-            generalColls.forEach(function(c) {
-                var maxInc = Math.max.apply(null, generalColls.map(function(x) { return x.income || 0; }).concat([1]));
-                var pct = maxInc ? Math.min(c.income / maxInc * 100, 100) : 0;
-                var spentPct = c.income ? Math.min(c.expense / c.income * 100, 100) : 0;
-                var balClass = c.balance >= 0 ? 'positive' : 'negative';
-
-                var card = document.createElement('div');
-                card.className = 'budget-card';
-                card.setAttribute('data-cid', c.id);
-                card.innerHTML =
-                    '<div class="budget-card-name">' + c.name + '</div>' +
-                    '<div class="budget-card-balance ' + balClass + '">' + fmtMoney(c.balance) + '</div>' +
-                    '<div class="budget-card-stats">' +
-                        '<div class="budget-card-stat income">' +
-                            '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 12V4M5 7l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-                            fmtMoney(c.income) +
-                        '</div>' +
-                        '<div class="budget-card-stat expense">' +
-                            '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><path d="M8 4v8M5 9l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
-                            fmtMoney(c.expense) +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="budget-bar">' +
-                        '<div class="budget-bar-fill" style="width:' + pct + '%"></div>' +
-                        '<div class="budget-bar-spent" style="width:' + spentPct + '%"></div>' +
-                    '</div>' +
-                    (c.payers_count > 0 ? '<div class="budget-card-payers">' +
-                        '<svg viewBox="0 0 16 16" fill="none" width="14" height="14"><circle cx="5.5" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1 13c0-2.2 2-4 4.5-4s4.5 1.8 4.5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="11" cy="5.5" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M12 9c1.7.3 3 1.5 3 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>' +
-                        c.payers_count + ' сдали' +
-                    '</div>' : '');
-
-                card.addEventListener('click', function() {
-                    loadPage('transactions', 'dashboard');
-                    setTimeout(function() {
-                        document.getElementById('filter-collection').value = c.id;
-                        loadTransactions(1);
-                    }, 100);
-                });
-                generalGrid.appendChild(card);
-            });
-        }
-
-        // Render Event Collections
-        var eventsSection = document.getElementById('events-section');
-        var eventsScroll = document.getElementById('events-scroll');
-        var eventsCount = document.getElementById('events-count');
-        eventsScroll.innerHTML = '';
-
-        if (eventColls.length === 0) {
-            eventsSection.style.display = 'none';
-        } else {
-            eventsSection.style.display = 'block';
-            eventsCount.textContent = eventColls.length;
-
-            eventColls.forEach(function(c) {
-                var card = document.createElement('div');
-                card.className = 'event-card';
-                card.innerHTML =
-                    '<div class="event-card-accent"></div>' +
-                    '<div class="event-card-name">' + c.name + '</div>' +
-                    '<div class="event-card-amount">' + fmtMoney(c.income) + '</div>' +
-                    '<div class="event-card-info">' +
-                        (c.payers_count > 0 ? '<span>' + c.payers_count + ' сдали</span>' : '') +
-                        (c.expense > 0 ? '<span>Расход: ' + fmtMoney(c.expense) + '</span>' : '') +
-                    '</div>';
-
-                card.addEventListener('click', function() {
-                    loadPage('transactions', 'dashboard');
-                    setTimeout(function() {
-                        document.getElementById('filter-collection').value = c.id;
-                        loadTransactions(1);
-                    }, 100);
-                });
-                eventsScroll.appendChild(card);
-            });
-        }
+        // Store data for toggle re-render
+        _dashData = data;
+        renderCollections(data);
 
         // Donut
         var donutEl = document.getElementById('donut-chart');
@@ -491,6 +515,7 @@ function showDetail(tx) {
     body.innerHTML = html;
     document.getElementById('detail-modal').classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.getElementById('content').style.overflow = 'hidden';
     body.querySelectorAll('.detail-photo').forEach(function(dp) {
         dp.addEventListener('click', function() { viewPhoto(dp.getAttribute('data-path')); });
     });
@@ -499,6 +524,7 @@ function showDetail(tx) {
 function closeDetail() {
     document.getElementById('detail-modal').classList.remove('active');
     document.body.style.overflow = '';
+    document.getElementById('content').style.overflow = '';
 }
 
 document.querySelector('.detail-close')?.addEventListener('click', closeDetail);
@@ -781,11 +807,13 @@ function openModal(tx) {
     }
     modalOverlay.classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.getElementById('content').style.overflow = 'hidden';
 }
 
 function closeModal() {
     modalOverlay.classList.remove('active');
     document.body.style.overflow = '';
+    document.getElementById('content').style.overflow = '';
 }
 
 document.getElementById('tx-photo').addEventListener('change', function(e) {
@@ -884,13 +912,141 @@ window.deleteTx = async function(id) {
     }
 };
 
+// === Photo Viewer with Zoom/Pan ===
+var _pv = { scale: 1, tx: 0, ty: 0, pinchDist: 0, dragging: false, dragStart: {x:0,y:0}, lastTap: 0, mouseDown: false };
+var _pvModal = document.getElementById('photo-modal');
+var _pvImg = document.getElementById('photo-viewer-img');
+
+function _pvUpdate() {
+    _pvImg.style.transform = 'translate(' + _pv.tx + 'px,' + _pv.ty + 'px) scale(' + _pv.scale + ')';
+}
+function _pvReset() {
+    _pv.scale = 1; _pv.tx = 0; _pv.ty = 0;
+    _pvImg.style.transform = '';
+    _pvImg.classList.remove('dragging');
+}
+
 window.viewPhoto = function(path) {
-    document.getElementById('photo-viewer-img').src = '/uploads/' + path;
-    document.getElementById('photo-modal').style.display = 'flex';
+    _pvImg.src = '/uploads/' + path;
+    _pvReset();
+    _pvModal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('content').style.overflow = 'hidden';
 };
 
-document.querySelector('.photo-close').addEventListener('click', function() {
-    document.getElementById('photo-modal').style.display = 'none';
+function _pvClose() {
+    _pvModal.classList.remove('active');
+    _pvReset();
+    document.body.style.overflow = '';
+    document.getElementById('content').style.overflow = '';
+}
+
+document.querySelector('.photo-close').addEventListener('click', function(e) {
+    e.stopPropagation();
+    _pvClose();
+});
+
+// Close on background click (not on image) when not zoomed
+_pvModal.addEventListener('click', function(e) {
+    if (_pv.scale <= 1 && (e.target === _pvModal || e.target.classList.contains('photo-viewer'))) {
+        _pvClose();
+    }
+});
+
+// Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && _pvModal.classList.contains('active')) _pvClose();
+});
+
+// --- Touch: pinch-zoom, pan, double-tap ---
+_pvModal.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+        e.preventDefault();
+        _pv.pinchDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+    } else if (e.touches.length === 1 && _pv.scale > 1) {
+        _pv.dragging = true;
+        _pv.dragStart.x = e.touches[0].clientX - _pv.tx;
+        _pv.dragStart.y = e.touches[0].clientY - _pv.ty;
+    }
+}, { passive: false });
+
+_pvModal.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2 && _pv.pinchDist > 0) {
+        e.preventDefault();
+        var dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        _pv.scale = Math.max(1, Math.min(6, _pv.scale * (dist / _pv.pinchDist)));
+        _pv.pinchDist = dist;
+        if (_pv.scale <= 1) { _pv.tx = 0; _pv.ty = 0; }
+        _pvUpdate();
+    } else if (e.touches.length === 1 && _pv.dragging && _pv.scale > 1) {
+        e.preventDefault();
+        _pv.tx = e.touches[0].clientX - _pv.dragStart.x;
+        _pv.ty = e.touches[0].clientY - _pv.dragStart.y;
+        _pvUpdate();
+    }
+}, { passive: false });
+
+_pvModal.addEventListener('touchend', function(e) {
+    if (e.touches.length < 2) _pv.pinchDist = 0;
+    _pv.dragging = false;
+    if (_pv.scale <= 1.05) { _pv.scale = 1; _pv.tx = 0; _pv.ty = 0; _pvUpdate(); }
+    // Double tap to zoom
+    if (e.changedTouches.length === 1 && e.touches.length === 0) {
+        var now = Date.now();
+        if (now - _pv.lastTap < 300) {
+            e.preventDefault();
+            if (_pv.scale > 1.1) {
+                _pvReset(); _pvUpdate();
+            } else {
+                _pv.scale = 2.5;
+                var rect = _pvImg.getBoundingClientRect();
+                var tapX = e.changedTouches[0].clientX - rect.left - rect.width / 2;
+                var tapY = e.changedTouches[0].clientY - rect.top - rect.height / 2;
+                _pv.tx = -tapX * (_pv.scale - 1);
+                _pv.ty = -tapY * (_pv.scale - 1);
+                _pvUpdate();
+            }
+            _pv.lastTap = 0;
+        } else {
+            _pv.lastTap = now;
+        }
+    }
+});
+
+// --- Mouse: wheel zoom, click+drag pan ---
+_pvModal.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var factor = e.deltaY > 0 ? 0.9 : 1.1;
+    _pv.scale = Math.max(1, Math.min(6, _pv.scale * factor));
+    if (_pv.scale <= 1) { _pv.tx = 0; _pv.ty = 0; }
+    _pvUpdate();
+}, { passive: false });
+
+_pvImg.addEventListener('mousedown', function(e) {
+    if (_pv.scale > 1) {
+        e.preventDefault();
+        _pv.mouseDown = true;
+        _pv.dragStart.x = e.clientX - _pv.tx;
+        _pv.dragStart.y = e.clientY - _pv.ty;
+        _pvImg.classList.add('dragging');
+    }
+});
+document.addEventListener('mousemove', function(e) {
+    if (_pv.mouseDown && _pv.scale > 1) {
+        _pv.tx = e.clientX - _pv.dragStart.x;
+        _pv.ty = e.clientY - _pv.dragStart.y;
+        _pvUpdate();
+    }
+});
+document.addEventListener('mouseup', function() {
+    _pv.mouseDown = false;
+    _pvImg.classList.remove('dragging');
 });
 
 // --- Users ---

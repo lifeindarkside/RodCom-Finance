@@ -73,7 +73,27 @@
 
 ## Быстрый старт
 
-### Docker (рекомендуется)
+### Готовый образ из GitHub Container Registry
+
+```bash
+# 1. Скачайте образ
+docker pull ghcr.io/lifeindarkside/rodcom-finance:latest
+
+# 2. Создайте .env и заполните (см. таблицу переменных ниже)
+curl -O https://raw.githubusercontent.com/lifeindarkside/RodCom-Finance/main/.env.example
+cp .env.example .env
+
+# 3. Запустите
+docker run -d \
+  --name rodcom \
+  --env-file .env \
+  -p 8080:8080 \
+  -v ./rodcom.db:/app/rodcom.db \
+  -v ./uploads:/app/uploads \
+  ghcr.io/lifeindarkside/rodcom-finance:latest
+```
+
+### Сборка из исходников
 
 ```bash
 # 1. Клонируйте репозиторий
@@ -83,10 +103,7 @@ cd RodCom-Finance
 # 2. Создайте .env из шаблона и заполните
 cp .env.example .env
 
-# 3. Подготовьте директорию данных
-mkdir -p data
-
-# 4. Запустите
+# 3. Запустите
 docker compose up -d --build
 ```
 

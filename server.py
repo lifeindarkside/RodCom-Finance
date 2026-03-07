@@ -71,7 +71,8 @@ async def save_upload(photo: UploadFile) -> str | None:
     content = await photo.read()
     if s3_storage.is_configured():
         content_type = photo.content_type or mimetypes.guess_type(filename)[0] or 'image/jpeg'
-        if s3_storage.upload(content, filename, content_type):
+        s3_key = f"photos/{filename}"
+        if s3_storage.upload(content, s3_key, content_type):
             return filename
         raise HTTPException(status_code=500, detail="Ошибка загрузки файла в хранилище")
     else:
@@ -82,7 +83,8 @@ async def save_upload(photo: UploadFile) -> str | None:
 
 def delete_upload(filename: str):
     if s3_storage.is_configured():
-        s3_storage.delete(filename)
+        s3_storage.delete(f"photos/{filename}")
+        s3_storage.delete(filename)  # fallback: old files in root
     local_path = os.path.join(UPLOAD_DIR, filename)
     if os.path.exists(local_path):
         os.remove(local_path)
@@ -95,7 +97,8 @@ async def serve_upload(filename: str):
     if os.path.isfile(local_path):
         return FileResponse(local_path, headers={"Cache-Control": "public, max-age=86400"})
     if s3_storage.is_configured():
-        data = s3_storage.download(filename)
+        # Try photos/ prefix first, then root (legacy)
+        data = s3_storage.download(f"photos/{filename}") or s3_storage.download(filename)
         if data:
             ct = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
             return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
@@ -155,6 +158,7 @@ async def log_usage(db: AsyncSession, user_id: int = None, telegram_id: int = No
 
 import asyncio
 from bot import start_bot, bot
+from scheduler import start_scheduler
 
 @app.on_event("startup")
 async def startup():
@@ -166,6 +170,7 @@ async def startup():
         except Exception:
             pass
     asyncio.create_task(start_bot())
+    asyncio.create_task(start_scheduler())
 
 from auth_state import pending_auths, cleanup_expired
 from config import BOT_NAME
